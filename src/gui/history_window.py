@@ -16,8 +16,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from src.gui.BlackList_Window import BlackList_Window
-from src.gui.main_window import show_scan_box
+from src.gui.main_window import show_scan_box, show_ai_overview_box
 from src.gui.WhiteList_Window import WhiteList_Window
+from src.gui.model_download_dialog import ModelDownloadDialog
 from src.logic.vt_service import (
     add_entry_to_blacklist,
     add_entry_to_whitelist,
@@ -26,6 +27,12 @@ from src.logic.vt_service import (
     delete_whiteList_entry,
     get_sorted_history,
 )
+from src.logic.llm_service import (
+    LLMExplainThread,
+    get_cached_ai_overview,
+    model_is_downloaded,
+)
+from PySide6.QtWidgets import QMessageBox
 
 """
 TO BE ADDED:
@@ -269,6 +276,7 @@ class History_Window(QWidget):
         menu = QMenu(self.table)
         menu.addAction("Copy")
         menu.addAction("View additional info")
+        menu.addAction("AI Overview")
         menu.addAction("White List")
         menu.addAction("Black List")
         menu.addAction("Delete")
@@ -286,6 +294,8 @@ class History_Window(QWidget):
             self.copy_target(row)
         elif action == "View additional info":
             self.view_additional_info(row)
+        elif action == "AI Overview":
+            self.view_ai_overview(row)
         elif action == "White List":
             self.addWhiteList(row)
         elif action == "Black List":
@@ -301,6 +311,69 @@ class History_Window(QWidget):
         if target:
             clipboard = QGuiApplication.clipboard()
             clipboard.setText(target)
+
+    def view_ai_overview(self, row: int):
+        target_item = self.table.item(row, 2)
+        kind_item = self.table.item(row, 1)
+        if not target_item or not kind_item:
+            return
+
+        target = target_item.text()
+        kind = kind_item.text()
+        if not target or not kind:
+            return
+
+        # If we already generated an overview for this target, show it instantly.
+        cached = get_cached_ai_overview(kind, target)
+        if cached:
+            show_ai_overview_box(self, cached.get("explanation", ""), cached.get("recommendation", ""))
+            return
+
+        # Otherwise we need the underlying scan data to feed the model.
+        scan = self._lookup_scanner_cache(kind, target)
+        if not scan:
+            QMessageBox.warning(
+                self, "AI Overview",
+                "No scan data is available for this entry, so an AI overview cannot be generated.",
+            )
+            return
+
+        if not model_is_downloaded():
+            dlg = ModelDownloadDialog(self)
+            if dlg.exec() != ModelDownloadDialog.Accepted:
+                return
+
+        verdict = scan.get("verdict", "UNKNOWN")
+        stats = scan.get("stats", {}) or {"risk_score": scan.get("risk_score", 0)}
+        signals = scan.get("signals", [])
+
+        self._ai_loading_box = QMessageBox(self)
+        self._ai_loading_box.setIcon(QMessageBox.Information)
+        self._ai_loading_box.setWindowTitle("AI Overview")
+        self._ai_loading_box.setText("Generating AI overview... this may take a moment.")
+        self._ai_loading_box.setStandardButtons(QMessageBox.NoButton)
+        self._ai_loading_box.show()
+
+        self._llm_worker = LLMExplainThread(
+            verdict, stats, signals, kind=kind, target=target, parent=self,
+        )
+        self._llm_worker.result.connect(self._on_ai_overview_result)
+        self._llm_worker.start()
+
+    def _on_ai_overview_result(self, payload: dict):
+        if getattr(self, "_ai_loading_box", None):
+            self._ai_loading_box.close()
+            self._ai_loading_box = None
+
+        if not payload.get("ok"):
+            QMessageBox.critical(self, "AI Error", payload.get("message", "Unknown error"))
+            return
+
+        show_ai_overview_box(
+            self,
+            payload.get("explanation", ""),
+            payload.get("recommendation", ""),
+        )
 
     def view_additional_info(self, row: int):
         target_item = self.table.item(row, 2)

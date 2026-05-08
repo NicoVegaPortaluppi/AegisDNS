@@ -1,5 +1,13 @@
 import dns.resolver
 
+# Use public DNS servers with generous timeouts. Local/ISP resolvers often drop
+# TXT queries (e.g. for SPF/DMARC) silently, which produces false "missing record" signals.
+_RESOLVER = dns.resolver.Resolver(configure=False)
+_RESOLVER.nameservers = ["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"]
+_RESOLVER.timeout = 5.0
+_RESOLVER.lifetime = 10.0
+
+
 # --- TTL + A/AAAA RECORDS ---
 def fetch_dns(domain: str) -> dict[str, list]:
 
@@ -8,15 +16,13 @@ def fetch_dns(domain: str) -> dict[str, list]:
         "AAAA": []
     }
 
-    resolver = dns.resolver.Resolver()
-
     try:
-        data["A"] = resolver.resolve(domain, "A")
+        data["A"] = _RESOLVER.resolve(domain, "A")
     except Exception:
         pass
 
     try:
-        data["AAAA"] = resolver.resolve(domain, "AAAA")
+        data["AAAA"] = _RESOLVER.resolve(domain, "AAAA")
     except Exception:
         pass
 
@@ -44,7 +50,7 @@ def extract_A_AAAA_metrics(dns_data : dict) -> dict[str, int | None] | None:
 # --- NS RECORDS ---
 def extract_ns_records(domain: str) -> list[str] | None:
     try:
-        answers = dns.resolver.resolve(domain, "NS")
+        answers = _RESOLVER.resolve(domain, "NS")
         return sorted({
             str(rdata.target).rstrip(".").lower()
             for rdata in answers
@@ -155,7 +161,7 @@ def classify_ns_provider(ns_records: list[str]) -> str:
 # --- MAIL CONFIGURATION ---
 def extract_mx_records(domain: str) -> list[str] | None:
     try:
-        answers = dns.resolver.resolve(domain, "MX")
+        answers = _RESOLVER.resolve(domain, "MX")
         return sorted(
             str(r.exchange).rstrip(".").lower()
             for r in answers
@@ -166,7 +172,7 @@ def extract_mx_records(domain: str) -> list[str] | None:
 
 def extract_txt_records(domain: str) -> list[str]:
     try:
-        answers = dns.resolver.resolve(domain, "TXT")
+        answers = _RESOLVER.resolve(domain, "TXT")
         return [
             "".join(part.decode() if isinstance(part, bytes) else part)
             for r in answers
@@ -183,7 +189,7 @@ def has_spf(txt_records: list[str]) -> bool:
 
 def has_dmarc(domain: str) -> bool:
     try:
-        dns.resolver.resolve(f"_dmarc.{domain}", "TXT")
+        _RESOLVER.resolve(f"_dmarc.{domain}", "TXT")
         return True
     except Exception:
         return False

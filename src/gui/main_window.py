@@ -96,6 +96,32 @@ def show_vt_deep_scan_box(parent, verdict: str, stats: dict, engine_results: dic
 
     box.exec()
 
+def render_ai_overview_html(explanation: str, recommendation: str) -> str:
+    return f"""
+    <div style="font-family:'Segoe UI',Arial; font-size:14px; color:#e5e7eb;">
+        <h2 style="margin:0 0 12px; font-size:18px; color:#60a5fa;">AI Analysis</h2>
+        <p style="margin-bottom:16px;">{explanation}</p>
+        <h3 style="margin:0 0 8px; font-size:16px; color:#34d399;">Recommendation</h3>
+        <p style="margin:0;">{recommendation}</p>
+    </div>
+    """
+
+
+def show_ai_overview_box(parent, explanation: str, recommendation: str):
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Information)
+    box.setWindowTitle("AI Overview")
+    box.setTextFormat(Qt.RichText)
+    box.setText(render_ai_overview_html(explanation, recommendation))
+    box.setStandardButtons(QMessageBox.Ok)
+    lbl = box.findChild(QLabel, "qt_msgbox_label")
+    if lbl:
+        lbl.setWordWrap(True)
+        lbl.setMinimumSize(520, 300)
+        lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
+    box.exec()
+
+
 def show_scan_box(parent, verdict: str, stats: dict, signals: list = None, silent: bool = False):
     if verdict in ("MALICIOUS", "DANGEROUS", "SUSPICIOUS", "BLOCK"):
         icon = QMessageBox.Critical

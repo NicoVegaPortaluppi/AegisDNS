@@ -9,8 +9,9 @@ import time
 # Connection with service layer
 from src.logic.vt_service import classify_kind, VTDeepScanThread
 from src.logic.scanner_service import ScannerScanThread
-from src.logic.llm_service import LLMExplainThread, model_is_downloaded
+from src.logic.llm_service import LLMExplainThread, model_is_downloaded, get_cached_ai_overview
 from src.gui.model_download_dialog import ModelDownloadDialog
+from src.gui.main_window import show_ai_overview_box
 
 # Connection with animations
 from src.animations.AnimatedToggle import AnimatedToggle
@@ -38,6 +39,8 @@ class Scanner_Window(QWidget):
         self.stats = {}
         self.verdict = "UNKNOWN"
         self.signals = []
+        self.kind = ""
+        self.target = ""
         
         # Create Main Layout
         self.setObjectName("SectionContent")
@@ -281,6 +284,8 @@ class Scanner_Window(QWidget):
         self.stats = payload.get("stats", {}) or {}
         self.verdict = payload.get("verdict", "UNKNOWN")
         self.signals = payload.get("signals", [])
+        self.kind = payload.get("kind", "")
+        self.target = payload.get("target", "")
         scoreDNS = 0
         scoreWhois = 0
         scoreWeb = 0
@@ -496,6 +501,12 @@ class Scanner_Window(QWidget):
 
     # --- AI Overview ---
     def on_ai_explain(self):
+        # Show cached overview instantly if we already have one for this target.
+        cached = get_cached_ai_overview(self.kind, self.target) if self.target else None
+        if cached:
+            show_ai_overview_box(self, cached.get("explanation", ""), cached.get("recommendation", ""))
+            return
+
         if not model_is_downloaded():
             dlg = ModelDownloadDialog(self)
             if dlg.exec() != ModelDownloadDialog.Accepted:
@@ -503,7 +514,10 @@ class Scanner_Window(QWidget):
 
         self.aiExplainButton.setEnabled(False)
         self.aiExplainButton.setText("Analyzing...")
-        self._llm_worker = LLMExplainThread(self.verdict, self.stats, self.signals, self)
+        self._llm_worker = LLMExplainThread(
+            self.verdict, self.stats, self.signals,
+            kind=self.kind, target=self.target, parent=self,
+        )
         self._llm_worker.result.connect(self.on_ai_result)
         self._llm_worker.start()
 
@@ -513,31 +527,8 @@ class Scanner_Window(QWidget):
         if not payload.get("ok"):
             QMessageBox.critical(self, "AI Error", payload.get("message", "Unknown error"))
             return
-        self.show_ai_explain_box(
+        show_ai_overview_box(
+            self,
             payload.get("explanation", ""),
             payload.get("recommendation", ""),
         )
-
-    def show_ai_explain_box(self, explanation: str, recommendation: str):
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Information)
-        box.setWindowTitle("AI Overview")
-        box.setTextFormat(Qt.RichText)
-        box.setText(self._render_ai_explain_html(explanation, recommendation))
-        box.setStandardButtons(QMessageBox.Ok)
-        lbl = box.findChild(QLabel, "qt_msgbox_label")
-        if lbl:
-            lbl.setWordWrap(True)
-            lbl.setMinimumSize(520, 300)
-            lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        box.exec()
-
-    def _render_ai_explain_html(self, explanation: str, recommendation: str) -> str:
-        return f"""
-        <div style="font-family:'Segoe UI',Arial; font-size:14px; color:#e5e7eb;">
-            <h2 style="margin:0 0 12px; font-size:18px; color:#60a5fa;">AI Analysis</h2>
-            <p style="margin-bottom:16px;">{explanation}</p>
-            <h3 style="margin:0 0 8px; font-size:16px; color:#34d399;">Recommendation</h3>
-            <p style="margin:0;">{recommendation}</p>
-        </div>
-        """

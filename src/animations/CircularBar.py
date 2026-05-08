@@ -1,6 +1,7 @@
 from PySide6.QtCore import Qt, QRectF, QTimer
 from PySide6.QtGui import QPainter, QPainterPath, QPen, QColor
 from PySide6.QtWidgets import QVBoxLayout, QWidget
+from src.logic.scanner_service import risk_score_to_verdict
 
 class CPBar(QWidget):
     def __init__(self):
@@ -89,26 +90,8 @@ class CPBar(QWidget):
             painter.setFont(font)
             verdictRect = self.rect().adjusted(0, 0, 0, -50)
 
-            if 0 < self.p <= 10:
-                painter.drawText(verdictRect, Qt.AlignHCenter|Qt.AlignBottom, f"Verdict: SECURE")
-
-            elif 11 <= self.p <= 20:
-                painter.drawText(verdictRect, Qt.AlignHCenter|Qt.AlignBottom, f"Verdict: SAFE")
-
-            elif 21 <= self.p <= 30:
-                painter.drawText(verdictRect, Qt.AlignHCenter|Qt.AlignBottom, f"Verdict: NEUTRAL")
-
-            elif 31 <= self.p <= 40:
-                painter.drawText(verdictRect, Qt.AlignHCenter|Qt.AlignBottom, f"Verdict: CAUTION")
-
-            elif 41 <= self.p <= 50:
-                painter.drawText(verdictRect, Qt.AlignHCenter|Qt.AlignBottom, f"Verdict: SUSPICIOUS")
-
-            elif 51 <= self.p <= 60:
-                painter.drawText(verdictRect, Qt.AlignHCenter|Qt.AlignBottom, f"Verdict: DANGEROUS")
-
-            elif 60 < self.p:
-                painter.drawText(verdictRect, Qt.AlignHCenter|Qt.AlignBottom, f"Verdict: MALICIOUS")
+            verdict = risk_score_to_verdict(int(self.p))
+            painter.drawText(verdictRect, Qt.AlignHCenter|Qt.AlignBottom, f"Verdict: {verdict}")
         
 
 

@@ -1,5 +1,7 @@
 import os
+import json
 import requests
+from datetime import datetime
 from pathlib import Path
 from PySide6.QtCore import QThread, Signal
 
@@ -9,6 +11,55 @@ MODEL_URL = (
     "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF"
     "/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf"
 )
+
+# Same scanner cache file used by scanner_service — we attach AI overviews to existing entries.
+_SCANNER_CACHE_FILE = Path(__file__).resolve().parent.parent / "VT_Cache" / "scanner_cache.json"
+
+
+def _cache_key(kind: str, target: str) -> str:
+    kind = (kind or "").lower()
+    if kind == "url":
+        norm = target if target.lower().startswith(("http://", "https://")) else f"http://{target}"
+        return f"url:{norm}"
+    return f"{kind}:{target}"
+
+
+def get_cached_ai_overview(kind: str, target: str) -> dict | None:
+    """Return {'explanation', 'recommendation'} if cached, else None."""
+    try:
+        if not _SCANNER_CACHE_FILE.exists():
+            return None
+        with open(_SCANNER_CACHE_FILE, "r", encoding="utf-8") as f:
+            state = json.load(f)
+        cache = state.get("cache", {}) or {}
+        entry = cache.get(_cache_key(kind, target))
+        if not entry:
+            return None
+        return entry.get("ai_overview")
+    except Exception:
+        return None
+
+
+def save_ai_overview(kind: str, target: str, explanation: str, recommendation: str) -> None:
+    """Attach AI overview to the existing scanner cache entry for this target."""
+    try:
+        state = {"last_call": 0, "cache": {}}
+        if _SCANNER_CACHE_FILE.exists():
+            with open(_SCANNER_CACHE_FILE, "r", encoding="utf-8") as f:
+                state = json.load(f)
+        cache = state.setdefault("cache", {})
+        entry = cache.setdefault(_cache_key(kind, target), {})
+        entry["ai_overview"] = {
+            "explanation": explanation,
+            "recommendation": recommendation,
+            "ts": datetime.now().isoformat(),
+        }
+        tmp = str(_SCANNER_CACHE_FILE) + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+        os.replace(tmp, _SCANNER_CACHE_FILE)
+    except Exception:
+        pass
 
 _llm_instance = None
 
@@ -155,11 +206,14 @@ class ModelDownloadThread(QThread):
 class LLMExplainThread(QThread):
     result = Signal(dict)
 
-    def __init__(self, verdict: str, stats: dict, signals: list, parent=None):
+    def __init__(self, verdict: str, stats: dict, signals: list,
+                 kind: str = "", target: str = "", parent=None):
         super().__init__(parent)
         self._verdict = verdict
         self._stats = stats
         self._signals = signals
+        self._kind = kind
+        self._target = target
 
     def run(self):
         try:
@@ -185,6 +239,9 @@ class LLMExplainThread(QThread):
             else:
                 explanation = raw
                 recommendation = ""
+
+            if self._kind and self._target:
+                save_ai_overview(self._kind, self._target, explanation, recommendation)
 
             self.result.emit({
                 "ok": True,
