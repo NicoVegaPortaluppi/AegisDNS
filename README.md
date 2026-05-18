@@ -299,5 +299,5 @@ This project is for defensive security monitoring and educational use. Only capt
 ---
 
 ## Collaborators
-- [Sebastian Perez](https://github.com/Zeviant/AegisDNS/commits?author=Zeviant): Main resposable for the browser extension. Also in charge of the scanner and the AI agent in the desktop application.
-- [Nicolas Vega](https://github.com/NicoVegaPortaluppi): Main resposable for the desktop application. Also in charge of the white list and black list connection between the desktop application and the browser extension.
+- [Sebastian Perez](https://github.com/Zeviant/AegisDNS/commits?author=Zeviant): Main developer of the browser extension. Also in charge of the scanner and the AI agent in the desktop application.
+- [Nicolas Vega](https://github.com/NicoVegaPortaluppi): Main developer of the desktop application. Also in charge of the white list and black list connection between the desktop application and the browser extension.
